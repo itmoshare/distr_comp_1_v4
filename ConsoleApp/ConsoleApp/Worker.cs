@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace ConsoleApp
 {
@@ -14,52 +11,65 @@ namespace ConsoleApp
 		public int Progress => _progress;
 		public int WorkSize { get; private set; }
 
-		private TaskFactory _limitedTaskFactory;
-		private readonly Stack<Task> _tasks = new Stack<Task>();
-		private static readonly Regex _regex = new Regex(@"^\((\d+);(\d+);(\d+)\)$", RegexOptions.Compiled);
 		private double _sum = 0;
 		private object _sumLock = new object();
 
-		public async Task<double> DowWork(int threadsCount, Stream inputStream)
+		public double DowWork(int threadsCount, (int, int, int)[][] data)
 		{
-			_limitedTaskFactory = new TaskFactory(new VeryLimitedScheduler(threadsCount));
-			using (var reader = new StreamReader(inputStream))
+			WorkSize = data.Length;
+			var threads = SplitToRanges(data.Length, threadsCount)
+				.Select(range => new Thread(() => HandleRange(data, range)))
+				.ToArray();
+
+			foreach (var thread in threads)
 			{
-				WorkSize = Convert.ToInt32(reader.ReadLine());
-				string line;
-				while ((line = reader.ReadLine()) != null)
-				{
-					var line1 = line;
-					_tasks.Push(_limitedTaskFactory.StartNew(() => HandleLine(line1)));
-				}
+				thread.Start();
 			}
 
-			await Task.WhenAll(_tasks).ConfigureAwait(false);
+			foreach (var thread in threads)
+			{
+				thread.Join();
+			}
+
 			return _sum;
 		}
 
-		private void HandleLine(string line)
+		private static IEnumerable<(int, int)> SplitToRanges(int size, int rangesCount)
 		{
-			var values = ParseLine(line);
+			var countPerRange = size / rangesCount;
+			var cur = 0;
+			while (true)
+			{
+				if (cur + 2 * countPerRange > size)
+				{
+					yield return (cur, size);
+					yield break;
+				}
 
-			var curSum = values
+				yield return (cur, cur + countPerRange);
+				cur += countPerRange;
+			}
+		}
+
+		private void HandleRange((int, int, int)[][] data, (int, int) range)
+		{
+			for (var i = range.Item1; i < range.Item2; i++)
+			{
+				HandleLine(data[i]);
+			}
+		}
+
+		private void HandleLine((int, int, int)[] data)
+		{
+			var curSum = data
 				.Skip(1)
-				.Zip(values, CalcDistance)
+				.Zip(data, CalcDistance)
 				.Sum();
 			lock (_sumLock)
 			{
 				_sum += curSum;
 				Interlocked.Increment(ref _progress);
 			}
-		}
-
-		private static (int, int, int)[] ParseLine(string line)
-		{
-			return line
-				.Split(' ')
-				.Select(x => _regex.Match(x))
-				.Select(x => (Convert.ToInt32(x.Groups[1].Value), Convert.ToInt32(x.Groups[2].Value), Convert.ToInt32(x.Groups[3].Value)))
-				.ToArray();
 		}
 
 		private static double CalcDistance((int, int, int) point1, (int, int, int) point2)
