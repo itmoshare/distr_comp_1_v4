@@ -10,7 +10,7 @@
         <e p="ConsoleApp.csproj" t="IncludeRecursive" />
         <e p="FileParser.cs" t="Include" />
         <e p="obj" t="ExcludeRecursive">
-          <e p="Release" t="Include">
+          <e p="Debug" t="Include">
             <e p="netcoreapp2.0" t="Include">
               <e p="ConsoleApp.AssemblyInfo.cs" t="Include" />
             </e>
@@ -18,7 +18,6 @@
         </e>
         <e p="Options.cs" t="Include" />
         <e p="Program.cs" t="Include" />
-        <e p="VeryLimitedScheduler.cs" t="Include" />
         <e p="Worker.cs" t="Include" />
       </e>
       <e p="ConsoleApp.sln" t="IncludeFlat" />
