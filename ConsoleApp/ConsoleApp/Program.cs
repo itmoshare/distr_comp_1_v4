@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Timers;
 using CommandLine;
+using ConsoleApp.Scheduler;
 
 namespace ConsoleApp
 {
@@ -20,7 +21,7 @@ namespace ConsoleApp
 					}
 					else
 					{
-						HandleFile(o.Path, o.ThreadsCount);
+						HandleFile(o.Path, o.ThreadsCount, o.Scheduler);
 					}
 				});
 		}
@@ -41,7 +42,7 @@ namespace ConsoleApp
 			Console.WriteLine("Generated");
 		}
 
-		private static void HandleFile(string path, int threadsCount)
+		private static void HandleFile(string path, int threadsCount, int schedulerNumber)
 		{
 			Console.WriteLine("Parsing data...");
 			var data = FileParser.Parse(path);
@@ -49,11 +50,43 @@ namespace ConsoleApp
 			var worker = new Worker();
 			StartLogging(worker);
 
+			var threadPool = new ThreadPool(threadsCount);
 			var stopwatch = Stopwatch.StartNew();
-			var result = worker.DowWork(threadsCount, data);
-			File.AppendAllText("result.txt", $"\nWork done! threads: {threadsCount} result: {result} time: {stopwatch.ElapsedMilliseconds}");
+			var scheduler = GetScheduler(threadPool, schedulerNumber);
+			var result = worker.DoWork(scheduler, data);
+			BuildReport(stopwatch.Elapsed, scheduler);
 
 			Console.WriteLine("\nWork done!");
+		}
+
+		private static IScheduler GetScheduler(ThreadPool threadPool, int number)
+		{
+			switch (number)
+			{
+				case 1:
+					return new RoundRobinScheduler(threadPool);
+				case 2:
+					return new LeastLoadedScheduler(threadPool);
+				case 3:
+					return new PredictiveScheduler(threadPool);
+				default:
+					throw new ArgumentException();
+			}
+		}
+
+		private static void BuildReport(TimeSpan fullTime, IScheduler scheduler)
+		{
+			var report = $"threads: {scheduler.ThreadPool.Size} time: {fullTime.Milliseconds}";
+			for (var i = 0; i < scheduler.ThreadPool.Size; i++)
+			{
+				var liveTime = scheduler.ThreadPool.GetThreadLiveTime(i).Milliseconds;
+				var waitTime = scheduler.ThreadPool.GetThreadWorkTime(i).Milliseconds;
+				report += $"\t thread {i} : " +
+				          $"live time = {liveTime} " +
+				          $"work time = {waitTime}" +
+				          $"wait time = {waitTime - liveTime}";
+			}
+			Console.WriteLine(report);
 		}
 
 		private static void StartLogging(Worker worker)
