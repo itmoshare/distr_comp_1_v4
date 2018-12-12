@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Timers;
 using CommandLine;
 using ConsoleApp.Scheduler;
@@ -48,13 +49,13 @@ namespace ConsoleApp
 			var data = FileParser.Parse(path);
 
 			var worker = new Worker();
-			StartLogging(worker);
+			var loggingTask = StartLogging(worker);
 
 			var threadPool = new ThreadPool(threadsCount);
-			var stopwatch = Stopwatch.StartNew();
 			var scheduler = GetScheduler(threadPool, schedulerNumber);
 			var result = worker.DoWork(scheduler, data);
-			BuildReport(stopwatch.Elapsed, scheduler);
+			loggingTask.ConfigureAwait(false).GetAwaiter().GetResult();
+			BuildReport(worker.WorkElapsed, scheduler);
 
 			Console.WriteLine("\nWork done!");
 		}
@@ -76,21 +77,23 @@ namespace ConsoleApp
 
 		private static void BuildReport(TimeSpan fullTime, IScheduler scheduler)
 		{
-			var report = $"threads: {scheduler.ThreadPool.Size} time: {fullTime.Milliseconds}";
+			Console.WriteLine();
+			var report = $"threads: {scheduler.ThreadPool.Size} time: {fullTime.TotalMilliseconds:0} \n";
 			for (var i = 0; i < scheduler.ThreadPool.Size; i++)
 			{
-				var liveTime = scheduler.ThreadPool.GetThreadLiveTime(i).Milliseconds;
-				var waitTime = scheduler.ThreadPool.GetThreadWorkTime(i).Milliseconds;
-				report += $"\t thread {i} : " +
-				          $"live time = {liveTime} " +
-				          $"work time = {waitTime}" +
-				          $"wait time = {waitTime - liveTime}";
+				var workTime = scheduler.ThreadPool.GetThreadWorkTime(i).TotalMilliseconds;
+				var waitTime = scheduler.ThreadPool.GetThreadWaitTime(i).TotalMilliseconds;
+				report += $"thread {i} \n" +
+				          $"\t live time = {workTime + waitTime:0}\n" +
+				          $"\t work time = {workTime:0}\n" +
+				          $"\t wait time = {waitTime:0}\n";
 			}
 			Console.WriteLine(report);
 		}
 
-		private static void StartLogging(Worker worker)
+		private static Task StartLogging(Worker worker)
 		{
+			var taskCompletionSource = new TaskCompletionSource<bool>();
 			var timer = new Timer
 			{
 				Interval = 400,
@@ -105,10 +108,16 @@ namespace ConsoleApp
 				}
 
 				if (worker.Progress >= worker.WorkSize)
+				{
+					Console.Write($"\r{1:P}");
+					taskCompletionSource.SetResult(true);
 					timer.Stop();
+					return;
+				}
 
 				Console.Write($"\r{(float) worker.Progress / (worker.WorkSize != 0 ? worker.WorkSize : 1):P}");
 			};
+			return taskCompletionSource.Task;
 		}
 	}
 }

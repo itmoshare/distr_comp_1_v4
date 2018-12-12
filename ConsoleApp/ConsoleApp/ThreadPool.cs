@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -10,26 +11,33 @@ namespace ConsoleApp
     {
         public int Size { get; }
         private readonly Thread[] _threads;
-        private readonly Queue<Action>[] _actionQueues;
+        private readonly bool[] _threadStates;
+        private readonly CancellationTokenSource _cancellationTokenSource;
+        private readonly ConcurrentQueue<Action>[] _actionQueues;
 
         public int[] GetWorkload() => _actionQueues.Select(x => x.Count).ToArray();
 
-        private readonly Stopwatch[] _threadLiveStopwatches;
+        public bool IsFree() => GetWorkload().All(x => x == 0) && _threadStates.All(x => !x);
+        
         private readonly Stopwatch[] _workStopwatches;
+        private readonly Stopwatch[] _waitStopwatches;
         
         public ThreadPool(int size)
         {
             Size = size;
-            _actionQueues = new Queue<Action>[Size];
+            _cancellationTokenSource = new CancellationTokenSource();
+            _threadStates = new bool[Size];
             _threads = new Thread[Size];
-            _threadLiveStopwatches = new Stopwatch[Size];
+            _actionQueues = new ConcurrentQueue<Action>[Size];
+            _waitStopwatches = new Stopwatch[Size];
             _workStopwatches = new Stopwatch[Size];
             for (var i = 0; i < Size; i++)
             {
                 var i1 = i;
-                _threads[i] = new Thread(() => ThreadRuntimeMethod(i1));
-                _threadLiveStopwatches[i] = new Stopwatch();
+                _actionQueues[i] = new ConcurrentQueue<Action>();
+                _threads[i] = new Thread(() => ThreadRuntimeMethod(i1, _cancellationTokenSource.Token));
                 _workStopwatches[i] = new Stopwatch();
+                _waitStopwatches[i] = new Stopwatch();
             }
         }
 
@@ -47,33 +55,40 @@ namespace ConsoleApp
         }
 
         public void Stop()
-        {           
-            foreach (var thread in _threads)
-            {
-                thread.Abort();
-            }
-            
-            for (var i = 0; i < Size; i++)
-            {
-                _threadLiveStopwatches[i].Stop();
-                _workStopwatches[i].Stop();
-            }
+        {          
+            _cancellationTokenSource.Cancel();
         }
         
-        private void ThreadRuntimeMethod(int threadNumber)
+        private void ThreadRuntimeMethod(int threadNumber, CancellationToken cancellationToken)
         {
-            _threadLiveStopwatches[threadNumber].Start();
-            while (true)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                _actionQueues[threadNumber].TryDequeue(out var action);
-                _workStopwatches[threadNumber].Start();
-                action?.Invoke();
-                _workStopwatches[threadNumber].Stop();
+                if (_actionQueues[threadNumber].TryDequeue(out var action))
+                {
+                    ThreadEnterWork(threadNumber);
+                    action?.Invoke();
+                    ThreadExitWork(threadNumber);
+                }
             }
+            _waitStopwatches[threadNumber].Stop();
         }
 
-        public TimeSpan GetThreadLiveTime(int threadNumber) => _threadLiveStopwatches[threadNumber].Elapsed;
-
+        private void ThreadEnterWork(int threadNumber)
+        {
+            _waitStopwatches[threadNumber].Stop();
+            _workStopwatches[threadNumber].Start();
+            _threadStates[threadNumber] = true;
+        }
+        
+        private void ThreadExitWork(int threadNumber)
+        {
+            _workStopwatches[threadNumber].Stop();
+            _waitStopwatches[threadNumber].Start();
+            _threadStates[threadNumber] = false;
+        }
+        
         public TimeSpan GetThreadWorkTime(int threadNumber) => _workStopwatches[threadNumber].Elapsed;
+
+        public TimeSpan GetThreadWaitTime(int threadNumber) => _waitStopwatches[threadNumber].Elapsed;
     }
 }
