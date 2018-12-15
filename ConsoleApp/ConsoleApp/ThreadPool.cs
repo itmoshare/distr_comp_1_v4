@@ -14,6 +14,7 @@ namespace ConsoleApp
         private readonly bool[] _threadStates;
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly ConcurrentQueue<Action>[] _actionQueues;
+        private readonly int[] _handledCount;
 
         public int[] GetWorkload() => _actionQueues.Select(x => x.Count).ToArray();
 
@@ -29,6 +30,7 @@ namespace ConsoleApp
             _threadStates = new bool[Size];
             _threads = new Thread[Size];
             _actionQueues = new ConcurrentQueue<Action>[Size];
+            _handledCount = new int[Size];
             _waitStopwatches = new Stopwatch[Size];
             _workStopwatches = new Stopwatch[Size];
             for (var i = 0; i < Size; i++)
@@ -84,11 +86,14 @@ namespace ConsoleApp
         {
             _workStopwatches[threadNumber].Stop();
             _waitStopwatches[threadNumber].Start();
+            _handledCount[threadNumber]++;
             _threadStates[threadNumber] = false;
         }
         
         public TimeSpan GetThreadWorkTime(int threadNumber) => _workStopwatches[threadNumber].Elapsed;
 
         public TimeSpan GetThreadWaitTime(int threadNumber) => _waitStopwatches[threadNumber].Elapsed;
+
+        public int[] GetHandledCounts() => _handledCount;
     }
 }

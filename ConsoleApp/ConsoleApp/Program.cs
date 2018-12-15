@@ -78,12 +78,14 @@ namespace ConsoleApp
 		private static void BuildReport(TimeSpan fullTime, IScheduler scheduler)
 		{
 			Console.WriteLine();
+			var handledCounts = scheduler.ThreadPool.GetHandledCounts();
 			var report = $"threads: {scheduler.ThreadPool.Size} time: {fullTime.TotalMilliseconds:0} \n";
 			for (var i = 0; i < scheduler.ThreadPool.Size; i++)
 			{
 				var workTime = scheduler.ThreadPool.GetThreadWorkTime(i).TotalMilliseconds;
 				var waitTime = scheduler.ThreadPool.GetThreadWaitTime(i).TotalMilliseconds;
 				report += $"thread {i} \n" +
+				          $"\t work count = {handledCounts[i]}\n" +
 				          $"\t live time = {workTime + waitTime:0}\n" +
 				          $"\t work time = {workTime:0}\n" +
 				          $"\t wait time = {waitTime:0}\n";

@@ -14,7 +14,6 @@ namespace ConsoleApp.Scheduler
             _weights = new int[threadPool.Size];
         }
 
-        /// <inheritdoc />
         public void Push(Action task, int weight)
         {
             var minI = 0;
